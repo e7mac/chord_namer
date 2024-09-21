@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midi_harmonic_analysis"
+version = "0.1.0"
+authors = [
+  { name="Gavin Leeper", email="gavin@sharp15.net" },
+  { name="Mayank Sanganeria", email="mayank.ot@gmail.com" },
+]
+description = "A library for analyzing musical scores using music21"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/e7mac/midi_harmonic_analysis"
+"Bug Tracker" = "https://github.com/e7mac/midi_harmonic_analysis/issues"
