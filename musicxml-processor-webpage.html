@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MusicXML Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>MusicXML Processor</h1>
+    <input type="file" id="fileInput" accept=".mxl,.musicxml">
+    <button onclick="processFile()">Process File</button>
+    <div id="output"></div>
+
+    <script>
+        const API_URL = 'https://rcu2rwskvezrt52cpnr6zz4iye0wsdst.lambda-url.us-east-1.on.aws/';
+
+        async function processFile() {
+            const fileInput = document.getElementById('fileInput');
+            const output = document.getElementById('output');
+
+            if (!fileInput.files.length) {
+                output.textContent = 'Please select a file first.';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async function(e) {
+                const base64Content = e.target.result.split(',')[1];
+
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            body: base64Content,
+                            isBase64Encoded: true
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const responseData = await response.json();
+
+                    // Decode the base64-encoded body
+                    const decodedContent = atob(responseData.body);
+                    const mxlContent = new Uint8Array(decodedContent.length);
+                    for (let i = 0; i < decodedContent.length; i++) {
+                        mxlContent[i] = decodedContent.charCodeAt(i);
+                    }
+
+                    // Create a download link for the processed MXL file
+                    const blob = new Blob([mxlContent], {type: 'application/vnd.recordare.musicxml'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'processed_' + file.name.replace('.xml', '.mxl');
+                    a.textContent = 'Download Processed MXL File';
+
+                    output.innerHTML = '';
+                    output.appendChild(a);
+                } catch (error) {
+                    output.textContent = 'Error: ' + error.message;
+                }
+            };
+
+            reader.readAsDataURL(file);
+        }
+    </script>
+</body>
+</html>
