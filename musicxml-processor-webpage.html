@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicXML Processor</title>
+    <title>MusicXML Processor with OSMD</title>
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -17,32 +18,58 @@
             border: 1px solid #ccc;
             background-color: #f9f9f9;
         }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin-top: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #osmdCanvas {
+            width: 100%;
+            overflow-x: auto;
+        }
     </style>
 </head>
 <body>
-    <h1>MusicXML Processor</h1>
-    <input type="file" id="fileInput" accept=".mxl,.musicxml">
+    <h1>MusicXML Processor with OSMD</h1>
+    <input type="file" id="fileInput" accept=".mxl,.musicxml,.xml">
     <button onclick="processFile()">Process File</button>
+    <div class="spinner" id="spinner"></div>
     <div id="output"></div>
+    <div id="osmdCanvas"></div>
 
     <script>
         const API_URL = 'https://rcu2rwskvezrt52cpnr6zz4iye0wsdst.lambda-url.us-east-1.on.aws/';
+        let osmd;
 
         async function processFile() {
             const fileInput = document.getElementById('fileInput');
             const output = document.getElementById('output');
+            const spinner = document.getElementById('spinner');
+            const osmdCanvas = document.getElementById('osmdCanvas');
 
             if (!fileInput.files.length) {
                 output.textContent = 'Please select a file first.';
                 return;
             }
 
+            spinner.style.display = 'block';
+            output.textContent = '';
+            osmdCanvas.innerHTML = '';
+
             const file = fileInput.files[0];
             const reader = new FileReader();
 
             reader.onload = async function(e) {
                 const base64Content = e.target.result.split(',')[1];
-
                 try {
                     const response = await fetch(API_URL, {
                         method: 'POST',
@@ -60,26 +87,36 @@
                     }
 
                     const responseData = await response.json();
-
-                    // Decode the base64-encoded body
                     const decodedContent = atob(responseData.body);
-                    const mxlContent = new Uint8Array(decodedContent.length);
-                    for (let i = 0; i < decodedContent.length; i++) {
-                        mxlContent[i] = decodedContent.charCodeAt(i);
+
+                    // Initialize OSMD
+                    if (!osmd) {
+                        osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmdCanvas", {
+                            autoResize: true,
+                            drawTitle: true,
+                            drawSubtitle: true,
+                            drawComposer: true,
+                            drawLyricist: true,
+                        });
                     }
 
-                    // Create a download link for the processed MXL file
-                    const blob = new Blob([mxlContent], {type: 'application/vnd.recordare.musicxml'});
+                    // Load and render MusicXML
+                    await osmd.load(decodedContent);
+                    osmd.render();
+
+                    // Create download link
+                    const blob = new Blob([decodedContent], {type: 'application/vnd.recordare.musicxml+xml'});
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'processed_' + file.name.replace('.xml', '.mxl');
-                    a.textContent = 'Download Processed MXL File';
-
+                    a.download = 'processed_' + file.name.replace('.mxl', '.xml');
+                    a.textContent = 'Download Processed MusicXML File';
                     output.innerHTML = '';
                     output.appendChild(a);
                 } catch (error) {
                     output.textContent = 'Error: ' + error.message;
+                } finally {
+                    spinner.style.display = 'none';
                 }
             };
 
