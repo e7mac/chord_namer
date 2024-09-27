@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chord Namer</title>
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        #output, #explanation, #knownProblems {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin-top: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #osmdCanvas {
+            width: 100%;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        #fileInput, button {
+            margin-top: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .collapsible {
+            background-color: #777;
+            color: white;
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+        }
+        .active, .collapsible:hover {
+            background-color: #555;
+        }
+        .content {
+            padding: 0 18px;
+            display: none;
+            overflow: hidden;
+            background-color: #f1f1f1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chord Namer</h1>
+
+    <div id="explanation">
+        <h2>What is Chord Namer?</h2>
+        <p>Chord Namer is a tool that helps you identify and name the chords in a given musical score, even for complex orchestral pieces. It works by collapsing all the notes in each bar and identifying the name of the chord for those notes. This can be particularly useful for music analysis, composition, and arrangement.</p>
+        <p><a href="mailto:mayank.ot@gmail.com">Contact us</a> for any issues, suggestions or to share your interest in music education tools!</p>
+    </div>
+
+    <input type="file" id="fileInput" accept=".mxl,.musicxml,.xml">
+    <button onclick="processFile()">Process File</button>
+    <div class="spinner" id="spinner"></div>
+    <div id="output"></div>
+    <div id="osmdCanvas"></div>
+
+    <button type="button" class="collapsible">Known Problems</button>
+    <div class="content">
+        <p>We hope you enjoy using ChordNamer! <a href="mailto:mayank.ot@gmail.com">Let us know</a> if you encounter any issues. Here are a few known issues and limitations for v1 that we look to address in future versions.</p>
+
+        <h3>Multiple Chords Per Bar (i.e. Adjustable Harmonic Rhythm)</h3>
+        <p>Currently, ChordNamer assumes that there is only one chord per bar, and that the lowest note hitting on the downbeat of that bar (regardless of instrument) is the intended bass note. We have tried a few solutions to let the user specify a number of beats within which to calculate the chords (for example, every 2 beats), but so far have been unable to get the symbols to display correctly. We'll be asking the Music21 open source community about solutions to this soon.</p>
+
+        <h3>Roman Numeral Symbols and Analysis</h3>
+        <p>Music21 also has support for Roman Numeral analysis. It can even catch things like secondary dominants and borrowed chords. We intended to provide chord symbols above the staff, and Roman Numerals as lyrics below, but this poses two challenges. First, we currently can't get both of them to display at the same time, although one or the other will display. Second comes the age old question of inferring the mode of the music, i.e. is it C major or A minor. The proper mode or key for analysis may also change for different sections of a song, further complicating things.</p>
+        <p>As a result, we don't currently support Roman Numeral analysis, although in the future we might add a workflow where we use model selection logic to make a guess at the analysis, and then the analyst can highlight certain bar ranges and enter in a new hypothesis for the relevant key or mode for those bars.</p>
+
+        <h3>Chord Naming Edge Cases In Music21</h3>
+        <p>Music21 is primarily made for analyzing classical music, and generally likes to see chords strictly spelled out with no omissions. Whereas jazz players commonly don't play the 5th in a dominant 7th chord, for example, this will throw an error in Music21. For a full list of the permissible omissions in extended chords, please refer to the documentation on Music21's Harmony module. In the future, we may look to get around such cases by adding some common jazz voicings to the dictionary of recognized chord types.</p>
+        <p>There's also a stylistic question of preferring inversions (as classical folks tend to) or extensions (as jazz folks and associated genres do). For example, Gm7/Bb? Or Bb6? Dm9/F or FM13? The answer to these naming questions depends on the context, the hypothesized key, and the chord's hypothesized function in addition to the musical style.</p>
+    </div>
+
+    <script>
+        const API_URL = 'https://rcu2rwskvezrt52cpnr6zz4iye0wsdst.lambda-url.us-east-1.on.aws/';
+        let osmd;
+
+        async function processFile() {
+            const fileInput = document.getElementById('fileInput');
+            const output = document.getElementById('output');
+            const spinner = document.getElementById('spinner');
+            const osmdCanvas = document.getElementById('osmdCanvas');
+
+            if (!fileInput.files.length) {
+                output.textContent = 'Please select a file first.';
+                return;
+            }
+
+            spinner.style.display = 'block';
+            output.textContent = '';
+            osmdCanvas.innerHTML = '';
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async function(e) {
+                const base64Content = e.target.result.split(',')[1];
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            body: base64Content,
+                            isBase64Encoded: true
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const responseData = await response.json();
+                    const decodedContent = atob(responseData.body);
+                    const mxlContent = new Uint8Array(decodedContent.length);
+                    for (let i = 0; i < decodedContent.length; i++) {
+                        mxlContent[i] = decodedContent.charCodeAt(i);
+                    }
+
+                    // Initialize OSMD
+                    if (!osmd) {
+                        osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("osmdCanvas", {
+                            autoResize: true,
+                            drawTitle: true,
+                            drawSubtitle: true,
+                            drawComposer: true,
+                            drawLyricist: true,
+                        });
+                    }
+
+                    // Load and render MusicXML
+                    await osmd.load(decodedContent);
+                    osmd.render();
+
+                    // Create download link
+                    const blob = new Blob([mxlContent], {type: 'application/vnd.recordare.musicxml'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'processed_' + file.name.replace('.xml', '.mxl');
+                    a.textContent = 'Download Processed MXL File';
+                    output.innerHTML = '';
+                    output.appendChild(a);
+
+                } catch (error) {
+                    output.textContent = 'Error: ' + error.message;
+                } finally {
+                    spinner.style.display = 'none';
+                }
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        // Collapsible section functionality
+        var coll = document.getElementsByClassName("collapsible");
+        var i;
+
+        for (i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.display === "block") {
+                    content.style.display = "none";
+                } else {
+                    content.style.display = "block";
+                }
+            });
+        }
+    </script>
+</body>
+</html>

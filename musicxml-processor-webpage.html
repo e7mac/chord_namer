@@ -109,7 +109,7 @@
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'processed_' + file.name.replace('.mxl', '.xml');
+                    a.download = 'processed_' + file.name;
                     a.textContent = 'Download Processed MusicXML File';
                     output.innerHTML = '';
                     output.appendChild(a);
